@@ -33,6 +33,7 @@ func audioStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//Put this part below into audio stream
+	// var file audioStreamFile
 	audioByte, audioErr := audioByte(request.DocumentID)
 	if audioErr != nil {
 		fmt.Println("Audio byte fetch error: ", audioErr)

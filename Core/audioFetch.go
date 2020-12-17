@@ -2,12 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 )
 
 func fetchAudioDocument(documentID string, document *audioStreamDocument) error {
-	pathPrefix := "Document/"
+	pathPrefix := "../Document/"
 	pathSuffix := ".json"
 	fullPath := pathPrefix + documentID + pathSuffix
 	file, openErr := os.Open(fullPath)
@@ -26,8 +27,8 @@ func fetchAudioDocument(documentID string, document *audioStreamDocument) error 
 }
 
 func fetchAudioFile(document *audioStreamDocument) ([]byte, error) {
-	pathPrefix := "Storage/"
-	fullPath := pathPrefix + document.StorageID + "." + document.FileType
+	pathPrefix := "../Storage/"
+	fullPath := pathPrefix + document.StorageID + "." + fmt.Sprintf("%s", document.FileType)
 	file, openErr := os.Open(fullPath)
 	if openErr != nil {
 		return nil, openErr
