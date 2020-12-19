@@ -26,26 +26,35 @@ func fetchAudioDocument(documentID string, document *audioStreamDocument) error 
 	return nil
 }
 
-func fetchAudioFile(document *audioStreamDocument) ([]byte, error) {
+func fetchAudioFile(document *audioStreamDocument) ([]byte, int, error) {
 	pathPrefix := "../Storage/"
 	fullPath := pathPrefix + document.StorageID + "." + fmt.Sprintf("%s", document.FileType)
 	file, openErr := os.Open(fullPath)
 	if openErr != nil {
-		return nil, openErr
+		return nil, 0, openErr
 	}
-	byteValue, readErr := ioutil.ReadAll(file)
+	defer file.Close()
+	fileInfo, statErr := file.Stat()
+	if statErr != nil {
+		return nil, 0, statErr
+	}
+	fileSize := fileInfo.Size()
+	buffer := make([]byte, fileSize)
+	byteValue, readErr := file.Read(buffer)
 	if readErr != nil {
-		return nil, readErr
+		return nil, 0, readErr
 	}
-	return byteValue, nil
+	return buffer, byteValue, nil
 }
 
-func audioByte(documentID string) ([]byte, error) {
+func audioStream(documentID string) (audioStreamResponse, error) {
 	var document audioStreamDocument
+	var file audioStreamResponse
 	docErr := fetchAudioDocument(documentID, &document)
 	if docErr != nil {
-		return nil, docErr
+		return file, docErr
 	}
-	audioByte, fileErr := fetchAudioFile(&document)
-	return audioByte, fileErr
+	audioBuffer, audioBufferSize, fileErr := fetchAudioFile(&document)
+	file = audioStreamResponse{Document: document, AudioBuffer: audioBuffer, AudioBufferSize: audioBufferSize}
+	return file, fileErr
 }
