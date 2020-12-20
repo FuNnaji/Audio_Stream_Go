@@ -1,5 +1,6 @@
 import SwiftUI
 import PlaygroundSupport
+import AVFoundation
 PlaygroundPage.current.needsIndefiniteExecution = true
 
 struct AudioStreamRequest: Encodable {
@@ -63,6 +64,7 @@ class AudioStream: ObservableObject {
     @Published var streamState: StreamState = .idle
     private var requestError: String = ""
     @Published var currentSong: AudioStreamResponse?
+    @Published var player: AVPlayer?
     
     func createRequest(id: String, serverUrl: String) -> URLRequest? {
         requestError = ""
@@ -132,9 +134,9 @@ struct AudioStreamView: View {
     func tooglePlay() {
         switch streamState {
         case .streaming:
-            streamState = .notStreaming // Pause Streaming
+            streamState = .notStreaming // Pause Playing
         case .notStreaming:
-            streamState = .streaming // Start Streaming
+            streamState = .streaming // Start Playing
         case .idle:
             initiateNewStream(id: audioIDS[currentAudioIndex], serverUrl: AudioNetwork.audioStreamURL)
         case .error:
@@ -173,17 +175,17 @@ extension AudioStreamView {
                 DispatchQueue.main.async {
                     if let responseData = response.0 {
                         AudioStream.shared.currentSong = responseData
-                        streamState = .streaming // Start Streaming
+                        streamState = .streaming // Start Playing
                         audioTitle = responseData.document.title
                         print("Audio Stream => \(responseData)")
                         currentAudioArtists()
                     } else if let responseError = response.1 {
-                        streamState = .error // Stop Streaming
+                        streamState = .error // Stop Playing
                         audioTitle = responseError
                         print("Audio Stream (Response Error) => \(audioTitle)")
                         currentAudioArtists()
                     } else {
-                        streamState = .error // Stop Streaming
+                        streamState = .error // Stop Playing
                         audioTitle = NSLocalizedString("Unknown error occured from audio stream request", comment: "")
                         print("Audio Stream => \(audioTitle)")
                         currentAudioArtists()
@@ -191,14 +193,14 @@ extension AudioStreamView {
                 }
             } else if let error = error {
                 DispatchQueue.main.async {
-                    streamState = .error // Stop Streaming
+                    streamState = .error // Stop Playing
                     audioTitle = error.localizedDescription
                     print("Audio Stream (Error) => \(audioTitle)")
                     currentAudioArtists()
                 }
             } else {
                 DispatchQueue.main.async {
-                    streamState = .error // Stop Streaming
+                    streamState = .error // Stop Playing
                     audioTitle = NSLocalizedString("Unknown error occured from audio stream request", comment: "")
                     print("Audio Stream => \(audioTitle)")
                     currentAudioArtists()
