@@ -1,6 +1,6 @@
 # Audio_Stream_Go
 
-Audio Streaming service is written in Go, with UI written in Xcode playground.
+Audio streaming service is written in Go, with UI written in Xcode playground.
 
 ## Requirements
 
