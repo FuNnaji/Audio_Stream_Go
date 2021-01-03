@@ -47,7 +47,7 @@ func fetchAudioFile(document *audioStreamDocument) ([]byte, int, error) {
 	return buffer, byteValue, nil
 }
 
-func createAudioBuffer(documentID string) (audioStreamResponse, error) {
+func createAudioResponse(documentID string) (audioStreamResponse, error) {
 	var document audioStreamDocument
 	var file audioStreamResponse
 	docErr := fetchAudioDocument(documentID, &document)

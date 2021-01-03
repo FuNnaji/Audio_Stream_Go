@@ -10,8 +10,7 @@ func main() {
 	port := 8080
 	fmt.Println("Audio Stream Go >> starting...")
 
-	http.HandleFunc("/", audioDocumentHandler)
-	http.HandleFunc("/audioStream/", audioStreamHandler)
+	http.HandleFunc("/", audioStreamHandler)
 	fmt.Printf("Audio Stream Go >> serving on port %v\n", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", port), nil))
 
