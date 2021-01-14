@@ -52,7 +52,7 @@ struct AudioStreamNetwork: AudioNetwork {
             }
             let response = decodeJSONDataToResponse(data: data)
             guard let audioResponse = response.0 else {
-                completionHandler(nil, error)
+                completionHandler(nil, response.1)
                 return
             }
             completionHandler(audioResponse, nil)
@@ -237,14 +237,12 @@ struct AudioStreamView: View {
 extension AudioStreamView {
     func newStream(id: String, url: String) {
         AudioStream.shared.loadAudio(id: id, url: url, completionHandler: {error in
-            if let error = error {
-                DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                if let error = error {
                     audioTitle = error.localizedDescription
                     print("Audio Stream (Error) => \(audioTitle)")
                     currentAudioArtists()
-                }
-            } else {
-                DispatchQueue.main.async {
+                } else {
                     currentAudioArtists()
                     audioTitle = AudioStream.shared.playerTitle
                 }
