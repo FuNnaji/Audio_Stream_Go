@@ -158,6 +158,12 @@ class AudioStream: ObservableObject {
         player = nil
         state = .error
     }
+    
+    func reset() {
+        player?.stop()
+        player = nil
+        state = .idle
+    }
 }
 
 struct AudioStreamView: View {
@@ -196,15 +202,13 @@ struct AudioStreamView: View {
     func tooglePlay() {
         switch AudioStream.shared.state {
         case .streaming:
-            AudioStream.shared.state = .notStreaming
             AudioStream.shared.pause()
         case .notStreaming:
-            AudioStream.shared.state = .streaming
             AudioStream.shared.play()
         case .idle:
             newStream(id: audioIDS[currentAudioIndex], url: AudioStreamNetwork.audioStreamBaseURL)
         case .error:
-            AudioStream.shared.state = .idle
+            AudioStream.shared.reset()
             tooglePlay()
         }
         return
