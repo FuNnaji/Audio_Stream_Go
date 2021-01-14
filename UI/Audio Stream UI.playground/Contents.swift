@@ -24,30 +24,68 @@ struct AudioStreamResponse: Decodable {
     let audioBufferSize: Int
 }
 
-struct AudioNetwork {
-    static let audioStreamURL = "http://localhost:8080/"
+protocol AudioNetwork {
+    static func makeNetworkRequest(id: String, url: String, completionHandler: @escaping (Any?, Error?) -> Void)
+    static func decodeJSONDataToResponse(data: Data) -> (Decodable?, Error?)
+    static func encodeRequestToJSONData(request: Encodable) -> (Data?, Error?)
+    static func createURLRequest(id: String, url: String) -> (URLRequest?, Error?)
+}
+
+struct AudioStreamNetwork: AudioNetwork {
     
-    static func makeNetworkRequest(request: URLRequest, completionHandler: @escaping (Data?, Error?) -> Void) {
-        let downloadTask = URLSession.shared.dataTask(with: request, completionHandler: {(data, response, error) in
-            completionHandler(data, error)
+    enum Method: String {
+        case get = "GET"
+        case post = "POST"
+    }
+    
+    static let audioStreamBaseURL = "http://localhost:8080/"
+    
+    static func makeNetworkRequest(id: String, url: String, completionHandler: @escaping (Any?, Error?) -> Void) {
+        let request = createURLRequest(id: id, url: url)
+        guard let urlRequest = request.0 else {
+            return completionHandler(nil, request.1)
+        }
+        let downloadTask = URLSession.shared.dataTask(with: urlRequest, completionHandler: {(data, response, error) in
+            guard let data = data else {
+                completionHandler(nil, error)
+                return
+            }
+            let response = decodeJSONDataToResponse(data: data)
+            guard let audioResponse = response.0 else {
+                completionHandler(nil, error)
+                return
+            }
+            completionHandler(audioResponse, nil)
         })
         downloadTask.resume()
     }
     
-    static func decodeJSONDataToResponse(data: Data) -> (AudioStreamResponse?, String?) {
+    static func decodeJSONDataToResponse(data: Data) -> (Decodable?, Error?) {
         do {
             return (try JSONDecoder().decode(AudioStreamResponse.self, from: data), nil)
         } catch {
-            return (nil, error.localizedDescription)
+            return (nil, error)
         }
     }
     
-    static func encodeRequestToJSONData(request: AudioStreamRequest) -> (Data?, String?) {
+    static func encodeRequestToJSONData(request: Encodable) -> (Data?, Error?) {
         do {
-            return (try JSONEncoder().encode(request), nil)
+            return (try JSONEncoder().encode(request as! AudioStreamRequest), nil)
         } catch {
-            return (nil, error.localizedDescription)
+            return (nil, error)
         }
+    }
+    
+    static func createURLRequest(id: String, url: String) -> (URLRequest?, Error?) {
+        let requestBody = AudioStreamRequest(documentID: id)
+        let encodedRequestBody = encodeRequestToJSONData(request: requestBody)
+        guard let url = URL(string: url), let data = encodedRequestBody.0 else {
+            return (nil, encodedRequestBody.1)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = Method.post.rawValue
+        request.httpBody = data
+        return (request, nil)
     }
 }
 
@@ -61,71 +99,68 @@ class AudioStream: ObservableObject {
         case error
     }
     
-    @Published var currentSong: AudioStreamResponse?
+    @Published var state: StreamState = .idle
+    var playerTitle: String = ""
     
-    private var requestError: String = ""
     private var player: AVAudioPlayer?
+    private var currentSong: AudioStreamResponse?
     
-    func createRequest(id: String, serverUrl: String) -> URLRequest? {
-        requestError = ""
-        let requestBody = AudioStreamRequest(documentID: id)
-        let encodedRequestBody = AudioNetwork.encodeRequestToJSONData(request: requestBody)
-        guard let url = URL(string: serverUrl), let data = encodedRequestBody.0 else {
-            requestError = encodedRequestBody.1 ?? NSLocalizedString("Unable to request audio stream", comment: "")
-            print("Request error => \(requestError)")
-            return nil
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.httpBody = data
-        return request
+    func getArtists() -> [String] {
+        return currentSong?.document.artists ?? []
     }
     
-    func initiateRequest(id: String, serverUrl: String, completionHandler: @escaping (Data?, Error?) -> Void) {
-        guard let request = createRequest(id: id, serverUrl: serverUrl) else {
-            let error = NSError(domain: "", code: 500, userInfo:[NSLocalizedDescriptionKey: requestError]) as Error
-            return completionHandler(nil, error)
-        }
-        AudioNetwork.makeNetworkRequest(request: request, completionHandler: completionHandler)
+    func loadAudio(id: String, url: String, completionHandler: @escaping (Error?) -> Void) {
+        AudioStreamNetwork.makeNetworkRequest(id: id, url: url, completionHandler: {[weak self] audioResponse, error in
+            guard let audioResponse = audioResponse, let song = audioResponse as? AudioStreamResponse else {
+                completionHandler(error)
+                self?.stop()
+                return
+            }
+            print("Audio Stream => \(song)")
+            self?.currentSong = song
+            self?.playerTitle = song.document.title
+            self?.play()
+            completionHandler(nil)
+        })
         return
     }
     
-    func play() {
-        requestError = ""
+    func play() -> Bool {
         if let player = player {
-            player.play()
-            return
+            state = .streaming
+            return player.play()
         }
         guard let song = currentSong else {
-            requestError = NSLocalizedString("No song data present", comment: "")
-            print("Play error => \(requestError)")
-            return
+            print(NSLocalizedString("No song data present", comment: ""))
+            state = .error
+            return false
         }
         do {
             try player = AVAudioPlayer(data: song.audioBuffer, fileTypeHint: song.document.fileType.rawValue)
-            player?.play()
+            if let player = player {
+                state = .streaming
+                return player.play()
+            }
         } catch {
-            requestError = error.localizedDescription
-            print("Play error => \(requestError)")
+            print(error.localizedDescription)
         }
+        state = .error
+        return false
     }
     
     func pause() {
-        if let player = player {
-            player.pause()
-        }
+        player?.pause()
+        state = .notStreaming
     }
     
     func stop() {
-        if let player = player {
-            player.stop()
-        }
+        player?.stop()
         player = nil
+        state = .error
     }
 }
 
 struct AudioStreamView: View {
-    @State private var streamState: AudioStream.StreamState = .idle
     @State private var audioTitle: String = NSLocalizedString("No Audio Streaming", comment: "")
     @State private var audioArtists: String = NSLocalizedString("Artists", comment: "")
     @State private var currentAudioIndex: Int = 0
@@ -136,7 +171,7 @@ struct AudioStreamView: View {
             HStack(alignment: .center, spacing: 20) {
                 Button(action: tooglePlay) {
                     HStack {
-                        streamState == .streaming ? Image(systemName: "pause.fill"): Image(systemName: "play.fill")
+                        AudioStream.shared.state == .streaming ? Image(systemName: "pause.fill"): Image(systemName: "play.fill")
                     }
                 }
                 Button(action: next) {
@@ -159,17 +194,17 @@ struct AudioStreamView: View {
     }
     
     func tooglePlay() {
-        switch streamState {
+        switch AudioStream.shared.state {
         case .streaming:
-            streamState = .notStreaming
+            AudioStream.shared.state = .notStreaming
             AudioStream.shared.pause()
         case .notStreaming:
-            streamState = .streaming
+            AudioStream.shared.state = .streaming
             AudioStream.shared.play()
         case .idle:
-            initiateNewStream(id: audioIDS[currentAudioIndex], serverUrl: AudioNetwork.audioStreamURL)
+            newStream(id: audioIDS[currentAudioIndex], url: AudioStreamNetwork.audioStreamBaseURL)
         case .error:
-            streamState = .idle
+            AudioStream.shared.state = .idle
             tooglePlay()
         }
         return
@@ -182,15 +217,12 @@ struct AudioStreamView: View {
         } else {
             currentAudioIndex = currentAudioIndex + 1
         }
-        initiateNewStream(id: audioIDS[currentAudioIndex], serverUrl: AudioNetwork.audioStreamURL)
+        newStream(id: audioIDS[currentAudioIndex], url: AudioStreamNetwork.audioStreamBaseURL)
     }
     
     func currentAudioArtists() {
-        guard let artists = AudioStream.shared.currentSong?.document.artists else {
-            audioArtists = NSLocalizedString("Artists", comment: "")
-            return
-        }
-        if artists.count > 0 {
+        if AudioStream.shared.getArtists().count > 0 {
+            let artists = AudioStream.shared.getArtists()
             audioArtists = ""
             for artist in artists {
                 (artists.firstIndex(of: artist) ?? 0) == (artists.count - 1) ? audioArtists.append("\(artist)") : audioArtists.append("\(artist), ")
@@ -203,47 +235,18 @@ struct AudioStreamView: View {
 }
 
 extension AudioStreamView {
-    func initiateNewStream(id: String, serverUrl: String) {
-        AudioStream.shared.initiateRequest(id: id, serverUrl: serverUrl, completionHandler: {data, error in
-            if let data = data {
-                let response = AudioNetwork.decodeJSONDataToResponse(data: data)
+    func newStream(id: String, url: String) {
+        AudioStream.shared.loadAudio(id: id, url: url, completionHandler: {error in
+            if let error = error {
                 DispatchQueue.main.async {
-                    if let responseData = response.0 {
-                        AudioStream.shared.currentSong = responseData
-                        streamState = .streaming
-                        audioTitle = responseData.document.title
-                        print("Audio Stream => \(responseData)")
-                        currentAudioArtists()
-                        AudioStream.shared.play()
-                    } else if let responseError = response.1 {
-                        streamState = .error
-                        audioTitle = responseError
-                        print("Audio Stream (Response Error) => \(audioTitle)")
-                        currentAudioArtists()
-                        AudioStream.shared.stop()
-                    } else {
-                        streamState = .error
-                        audioTitle = NSLocalizedString("Unknown error occured from audio stream request", comment: "")
-                        print("Audio Stream => \(audioTitle)")
-                        currentAudioArtists()
-                        AudioStream.shared.stop()
-                    }
-                }
-            } else if let error = error {
-                DispatchQueue.main.async {
-                    streamState = .error
                     audioTitle = error.localizedDescription
                     print("Audio Stream (Error) => \(audioTitle)")
                     currentAudioArtists()
-                    AudioStream.shared.stop()
                 }
             } else {
                 DispatchQueue.main.async {
-                    streamState = .error
-                    audioTitle = NSLocalizedString("Unknown error occured from audio stream request", comment: "")
-                    print("Audio Stream => \(audioTitle)")
                     currentAudioArtists()
-                    AudioStream.shared.stop()
+                    audioTitle = AudioStream.shared.playerTitle
                 }
             }
         })
